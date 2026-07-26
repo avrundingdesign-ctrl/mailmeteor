@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>mailmeteor</title>
+    <link rel="stylesheet" href="/style.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%A8%3C/text%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <span class="brand-mark">✉</span>
+        <div>
+          <strong>mailmeteor</strong>
+          <span class="brand-sub">Einzeln versendet · kein BCC</span>
+        </div>
+      </div>
+
+      <div class="top-right">
+        <label class="field inline">
+          <span>Kampagne</span>
+          <input id="campaign" type="text" value="kampagne" spellcheck="false" />
+        </label>
+        <div id="smtpStatus" class="pill pill-muted">SMTP wird geprüft …</div>
+      </div>
+    </header>
+
+    <nav class="steps" id="stepNav">
+      <button type="button" data-step="1" class="active">
+        <span class="num">1</span> Empfänger <em id="navCount"></em>
+      </button>
+      <button type="button" data-step="2"><span class="num">2</span> Inhalt</button>
+      <button type="button" data-step="3"><span class="num">3</span> Prüfen &amp; Senden</button>
+    </nav>
+
+    <main class="layout">
+      <div class="work">
+        <!-- ------------------------------------------------ Schritt 1 -->
+        <section class="step active" data-step="1">
+          <h2>Empfängeradressen einfügen</h2>
+          <p class="hint">
+            Einfach reinkopieren – aus Outlook, einer Tabelle, einer Notiz. Getrennt durch
+            Zeilenumbruch, Komma oder Semikolon. <code>Anna Müller &lt;anna@example.com&gt;</code>
+            wird ebenso erkannt wie die nackte Adresse. Doppelte fliegen automatisch raus.
+          </p>
+
+          <textarea
+            id="addresses"
+            rows="10"
+            spellcheck="false"
+            placeholder="anna@example.com&#10;Bernd Muster <bernd@example.com>&#10;clara@example.com; dirk@example.com"
+          ></textarea>
+
+          <div class="row between">
+            <div id="recipientStats" class="stats"></div>
+            <button type="button" class="link" id="btnDemo">Beispieladressen einsetzen</button>
+          </div>
+
+          <div id="chips" class="chips"></div>
+          <div id="skipped" class="notice-list"></div>
+
+          <label class="check">
+            <input type="checkbox" id="resend" />
+            <span>
+              Bereits zugestellte Adressen erneut anschreiben
+              <em>Standard: wer die Mail dieser Kampagne schon hat, wird übersprungen.</em>
+            </span>
+          </label>
+
+          <div class="row end">
+            <button type="button" class="primary" data-goto="2">Weiter zum Inhalt →</button>
+          </div>
+        </section>
+
+        <!-- ------------------------------------------------ Schritt 2 -->
+        <section class="step" data-step="2">
+          <h2>Inhalt</h2>
+
+          <div class="row between wrap">
+            <label class="field grow">
+              <span>Betreff</span>
+              <input id="subject" type="text" placeholder="Kurze Frage, {{vorname}}" />
+            </label>
+            <label class="field">
+              <span>Vorlage laden</span>
+              <select id="templateSelect">
+                <option value="">– keine –</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="placeholders">
+            <span>Platzhalter einfügen:</span>
+            <button type="button" data-ph="vorname">{{vorname}}</button>
+            <button type="button" data-ph="name">{{name}}</button>
+            <button type="button" data-ph="email">{{email}}</button>
+            <em id="phHint"></em>
+          </div>
+
+          <div class="editor-wrap">
+            <div class="toolbar" id="toolbar">
+              <button type="button" data-cmd="bold" title="Fett (Strg+B)"><b>B</b></button>
+              <button type="button" data-cmd="italic" title="Kursiv (Strg+I)"><i>I</i></button>
+              <button type="button" data-cmd="underline" title="Unterstrichen"><u>U</u></button>
+              <span class="sep"></span>
+              <button type="button" data-cmd="formatBlock" data-value="h2" title="Überschrift">H</button>
+              <button type="button" data-cmd="insertUnorderedList" title="Liste">• Liste</button>
+              <button type="button" data-cmd="formatBlock" data-value="blockquote" title="Zitat">❝</button>
+              <span class="sep"></span>
+              <button type="button" id="btnLink" title="Link einfügen">🔗 Link</button>
+              <button type="button" data-cmd="removeFormat" title="Formatierung entfernen">⌫ Format</button>
+              <span class="grow"></span>
+              <label class="check tiny">
+                <input type="checkbox" id="plainMode" />
+                <span>Als reinen Text senden</span>
+              </label>
+            </div>
+
+            <div id="editor" class="editor" contenteditable="true"></div>
+            <textarea id="plainEditor" class="editor plain" hidden rows="14"></textarea>
+          </div>
+
+          <div class="attachments">
+            <label class="file-btn">
+              <input type="file" id="attachInput" multiple hidden />
+              📎 Anhang hinzufügen
+            </label>
+            <div id="attachList" class="attach-list"></div>
+          </div>
+
+          <div class="row end">
+            <button type="button" class="ghost" data-goto="1">← Zurück</button>
+            <button type="button" class="primary" data-goto="3">Weiter zum Prüfen →</button>
+          </div>
+        </section>
+
+        <!-- ------------------------------------------------ Schritt 3 -->
+        <section class="step" data-step="3">
+          <h2>Prüfen &amp; Senden</h2>
+
+          <div id="checklist" class="checklist"></div>
+
+          <details class="settings">
+            <summary>Versandeinstellungen</summary>
+            <div class="grid">
+              <label class="field">
+                <span>Pause zwischen zwei Mails (ms)</span>
+                <input id="delay" type="number" min="0" step="500" value="3000" />
+              </label>
+              <label class="field">
+                <span>Zufälliger Aufschlag (ms)</span>
+                <input id="jitter" type="number" min="0" step="500" value="2000" />
+              </label>
+              <label class="field">
+                <span>Höchstens n Mails in diesem Lauf</span>
+                <input id="max" type="number" min="0" step="10" value="0" placeholder="0 = alle" />
+              </label>
+              <label class="field">
+                <span>Wiederholversuche je Mail</span>
+                <input id="retries" type="number" min="0" max="5" value="2" />
+              </label>
+              <label class="field">
+                <span>Absender überschreiben</span>
+                <input id="from" type="text" placeholder="aus .env" />
+              </label>
+              <label class="field">
+                <span>Antwortadresse</span>
+                <input id="replyTo" type="email" placeholder="optional" />
+              </label>
+              <label class="field wide">
+                <span>Abmelde-Link (List-Unsubscribe-Kopfzeile)</span>
+                <input id="unsubscribe" type="text" placeholder="https://… oder mailto:…" />
+              </label>
+            </div>
+          </details>
+
+          <div class="send-box">
+            <div class="row wrap gap">
+              <label class="field grow">
+                <span>Testmail an dich selbst</span>
+                <input id="testAddress" type="email" placeholder="deine@adresse.de" />
+              </label>
+              <button type="button" class="ghost" id="btnTest">Testmail senden</button>
+            </div>
+
+            <div class="row wrap gap actions">
+              <button type="button" class="ghost" id="btnDry">Probelauf (nichts wird gesendet)</button>
+              <button type="button" class="primary big" id="btnSend">
+                <span id="sendLabel">Jetzt senden</span>
+              </button>
+              <button type="button" class="danger" id="btnStop" hidden>Stoppen</button>
+            </div>
+          </div>
+
+          <div id="run" class="run" hidden>
+            <div class="progress"><div id="progressBar"></div></div>
+            <div id="counters" class="counters"></div>
+            <div id="feed" class="feed"></div>
+          </div>
+
+          <div class="row end">
+            <button type="button" class="ghost" data-goto="2">← Zurück zum Inhalt</button>
+          </div>
+        </section>
+      </div>
+
+      <!-- ------------------------------------------------ Vorschau -->
+      <aside class="preview">
+        <div class="preview-head">
+          <strong>Vorschau</strong>
+          <div class="switcher">
+            <button type="button" id="prevBtn" title="Vorheriger Empfänger">‹</button>
+            <span id="previewIndex">–</span>
+            <button type="button" id="nextBtn" title="Nächster Empfänger">›</button>
+          </div>
+        </div>
+
+        <div class="mail-card">
+          <div class="mail-head">
+            <div><span class="label">Von</span> <span id="previewFrom">–</span></div>
+            <div><span class="label">An</span> <span id="previewTo">–</span></div>
+            <div class="subject" id="previewSubject">–</div>
+          </div>
+          <iframe id="previewFrame" sandbox="" title="Vorschau der Mail"></iframe>
+          <pre id="previewText" hidden></pre>
+        </div>
+
+        <div id="missingWarn" class="warn" hidden></div>
+
+        <div class="preview-foot">
+          <p>
+            So kommt die Mail bei <span id="previewToFoot">diesem Empfänger</span> an – mit den für
+            ihn eingesetzten Platzhaltern.
+          </p>
+        </div>
+      </aside>
+    </main>
+
+    <dialog id="confirmDialog">
+      <form method="dialog">
+        <h3>Wirklich senden?</h3>
+        <p id="confirmText"></p>
+        <div class="row end gap">
+          <button value="cancel" class="ghost">Abbrechen</button>
+          <button value="ok" class="primary">Ja, senden</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

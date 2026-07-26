@@ -4,7 +4,21 @@
 
 import { buildMessage } from './template.js';
 
-export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Wartet, lässt sich aber jederzeit abbrechen – sonst würde der Stop-Knopf
+ * der Oberfläche erst nach der laufenden Pause reagieren.
+ */
+export const sleep = (ms, signal) =>
+  new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const timer = setTimeout(finish, ms);
+    function finish() {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', finish);
+      resolve();
+    }
+    signal?.addEventListener('abort', finish, { once: true });
+  });
 
 /** Wartezeit inkl. Zufallsanteil, damit der Takt nicht maschinell gleichmäßig ist. */
 export function nextDelay(delayMs, jitterMs, random = Math.random) {
@@ -40,17 +54,19 @@ export function isQuotaExceeded(error) {
 /**
  * Versendet eine Nachricht mit Wiederholversuchen bei vorübergehenden Fehlern.
  */
-async function sendWithRetry(transport, message, { retries, retryDelayMs, onRetry, sleepFn }) {
+async function sendWithRetry(transport, message, { retries, retryDelayMs, onRetry, sleepFn, signal }) {
   let attempt = 0;
   for (;;) {
     try {
       return await transport.sendMail(message);
     } catch (error) {
-      if (isQuotaExceeded(error) || !isTransient(error) || attempt >= retries) throw error;
+      if (isQuotaExceeded(error) || !isTransient(error) || attempt >= retries || signal?.aborted) {
+        throw error;
+      }
       attempt++;
       const wait = retryDelayMs * 2 ** (attempt - 1);
       onRetry?.({ attempt, retries, wait, error });
-      await sleepFn(wait);
+      await sleepFn(wait, signal);
     }
   }
 }
@@ -65,6 +81,7 @@ async function sendWithRetry(transport, message, { retries, retryDelayMs, onRetr
  * @param {object|null} options.transport `null` = Probelauf, es wird nichts versendet
  * @param {import('./log.js').SendLog} options.log
  * @param {object} options.limits delayMs, jitterMs, retries, retryDelayMs, maxPerRun
+ * @param {AbortSignal} [options.signal] bricht den Lauf nach der laufenden Mail ab
  * @param {object} options.hooks Callbacks für die Ausgabe
  */
 export async function sendCampaign({
@@ -74,6 +91,7 @@ export async function sendCampaign({
   transport,
   log,
   limits,
+  signal,
   hooks = {},
   sleepFn = sleep,
   random = Math.random,
@@ -84,6 +102,14 @@ export async function sendCampaign({
 
   for (let i = 0; i < recipients.length; i++) {
     const recipient = recipients[i];
+
+    // Abbruch immer nur zwischen zwei Mails prüfen: eine bereits übergebene
+    // Nachricht lässt sich nicht zurückholen.
+    if (signal?.aborted) {
+      stopReason = 'Vom Benutzer gestoppt';
+      stats.skipped += recipients.length - i;
+      break;
+    }
 
     if (limits.maxPerRun && stats.sent >= limits.maxPerRun) {
       stopReason = `Obergrenze von ${limits.maxPerRun} Mails für diesen Lauf erreicht`;
@@ -109,6 +135,7 @@ export async function sendCampaign({
           retryDelayMs: limits.retryDelayMs,
           onRetry: (details) => hooks.onRetry?.({ recipient, ...details }),
           sleepFn,
+          signal,
         });
         log.record({ status: 'sent', email: recipient.email, messageId: info.messageId });
         stats.sent++;
@@ -135,8 +162,8 @@ export async function sendCampaign({
     if (!isLast) {
       const wait = nextDelay(limits.delayMs, limits.jitterMs, random);
       if (wait > 0) {
-        hooks.onWait?.({ wait });
-        await sleepFn(wait);
+        hooks.onWait?.({ wait, nextRecipient: recipients[i + 1] });
+        await sleepFn(wait, signal);
       }
     }
   }

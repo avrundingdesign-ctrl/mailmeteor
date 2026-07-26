@@ -79,6 +79,113 @@ export function looksLikeEmail(value) {
   return /^[^\s@,;]+@[^\s@,;.]+(\.[^\s@,;.]+)+$/.test(value);
 }
 
+/** Aus "Anna Maria Müller" wird {{name}} und {{vorname}}. */
+function namesFrom(displayName, email) {
+  const name = displayName.trim().replace(/^["']|["']$/g, '').trim();
+  if (name) {
+    // "Müller, Anna" (Outlook-Schreibweise) zu "Anna Müller" drehen
+    const swapped = /^([^,]+),\s*(.+)$/.exec(name);
+    const full = swapped ? `${swapped[2].trim()} ${swapped[1].trim()}` : name;
+    return { name: full, vorname: full.split(/\s+/)[0] };
+  }
+
+  // Ohne Anzeigename aus dem lokalen Teil raten: "anna.mueller@…" → "Anna"
+  const local = email.split('@')[0].replace(/[._-]+/g, ' ').replace(/\d+/g, '').trim();
+  const first = local.split(/\s+/)[0] ?? '';
+  const capitalised = first ? first[0].toUpperCase() + first.slice(1) : '';
+  return { name: capitalised, vorname: capitalised };
+}
+
+/**
+ * Liest eine frei eingefügte Adressliste – der übliche Weg beim Kopieren aus
+ * einem Mailprogramm, einer Tabelle oder einer Notiz.
+ *
+ * Erkannt werden: eine Adresse pro Zeile, durch Komma/Semikolon getrennt,
+ * `Anna Müller <anna@example.com>`, `"Müller, Anna" <anna@example.com>`,
+ * `mailto:`-Links sowie beliebige Kombinationen davon.
+ *
+ * @returns {{recipients: Array<object>, columns: string[], skipped: Array<{line: number, reason: string, raw: string}>}}
+ */
+export function parseAddressList(text) {
+  const recipients = [];
+  const skipped = [];
+  const seen = new Set();
+
+  const chunks = String(text)
+    .replace(/^﻿/, '')
+    // Trennzeichen vereinheitlichen, aber nur außerhalb von <…> und "…"
+    .split(/\r?\n/)
+    .flatMap((line, lineIndex) => {
+      const parts = [];
+      let current = '';
+      let inAngle = false;
+      let inQuotes = false;
+
+      for (const ch of line) {
+        if (ch === '"') inQuotes = !inQuotes;
+        else if (ch === '<') inAngle = true;
+        else if (ch === '>') inAngle = false;
+
+        if ((ch === ',' || ch === ';') && !inAngle && !inQuotes) {
+          parts.push(current);
+          current = '';
+        } else {
+          current += ch;
+        }
+      }
+      parts.push(current);
+
+      return parts.map((raw) => ({ raw, line: lineIndex + 1 }));
+    })
+    .filter(({ raw }) => raw.trim() !== '');
+
+  for (const { raw, line } of chunks) {
+    const entry = raw.trim().replace(/^mailto:/i, '');
+
+    // "Anna Müller <anna@example.com>" oder nur "anna@example.com"
+    const angle = /^(.*?)<\s*([^>]+?)\s*>$/.exec(entry);
+    const email = (angle ? angle[2] : entry).trim().replace(/^mailto:/i, '');
+    const displayName = angle ? angle[1] : '';
+
+    if (!looksLikeEmail(email)) {
+      skipped.push({ line, reason: `keine gültige Adresse: "${entry}"`, raw: entry });
+      continue;
+    }
+
+    const key = email.toLowerCase();
+    if (seen.has(key)) {
+      skipped.push({ line, reason: `Duplikat von ${email}`, raw: entry });
+      continue;
+    }
+    seen.add(key);
+
+    const { name, vorname } = namesFrom(displayName, email);
+    recipients.push({ email, line, fields: { email, name, vorname } });
+  }
+
+  return { recipients, columns: ['email', 'name', 'vorname'], skipped };
+}
+
+/** Erkennt, ob ein Text eine CSV mit Kopfzeile ist oder eine lose Adressliste. */
+export function looksLikeCsv(text) {
+  const firstLine = String(text).replace(/^﻿/, '').split(/\r?\n/, 1)[0] ?? '';
+  if (looksLikeEmail(firstLine.trim())) return false; // Kopfzeile wäre keine Adresse
+  const aliases = ['email', 'e-mail', 'e_mail', 'mail', 'adresse', 'address'];
+  return firstLine
+    .split(/[,;\t]/)
+    .some((cell) => aliases.includes(cell.trim().toLowerCase().replace(/^["']|["']$/g, '')));
+}
+
+/**
+ * Nimmt beides entgegen: eingefügte Adressen oder eine CSV mit Kopfzeile.
+ * Die Unterscheidung passiert automatisch anhand der ersten Zeile.
+ */
+export function loadAnyRecipients(text, { delimiter } = {}) {
+  return looksLikeCsv(text)
+    ? { ...loadRecipients(text, { delimiter }), format: 'csv' }
+    : { ...parseAddressList(text), format: 'list' };
+}
+
 /**
  * Liest CSV-Text in Empfänger-Objekte.
  *

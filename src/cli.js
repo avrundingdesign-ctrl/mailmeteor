@@ -15,6 +15,7 @@ import { buildMessage, parseFrontMatter, placeholderNames, stripHtmlComments } f
 import { SendLog, campaignLogPath } from './log.js';
 import { createTransport, loadSmtpConfig, verifyTransport } from './transport.js';
 import { sendCampaign } from './sender.js';
+import { loadEnvFile as readEnvFile } from './env.js';
 
 const HELP = `mailmeteor – Serienmails an viele Empfänger, einzeln versendet (kein BCC)
 
@@ -129,10 +130,8 @@ async function confirm(question) {
 }
 
 function loadEnvFile() {
-  const path = resolve('.env');
-  if (!existsSync(path)) return;
   try {
-    process.loadEnvFile(path);
+    readEnvFile();
   } catch (error) {
     fail(`.env konnte nicht gelesen werden: ${error.message}`);
   }

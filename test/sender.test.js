@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { SendLog, campaignLogPath } from '../src/log.js';
-import { isQuotaExceeded, isTransient, nextDelay, sendCampaign } from '../src/sender.js';
+import { isQuotaExceeded, isTransient, nextDelay, sendCampaign, sleep } from '../src/sender.js';
 
 const template = { subject: 'Hallo {{vorname}}', body: 'Moin {{vorname}}', isHtml: false };
 const noWait = { delayMs: 0, jitterMs: 0, retries: 0, retryDelayMs: 0, maxPerRun: 0 };
@@ -249,4 +249,60 @@ test('beschädigte Protokollzeilen machen das Protokoll nicht unbrauchbar', () =
   const neu = new SendLog(log.path);
   assert.deepEqual(neu.sentAddresses(), new Set(['a@b.de', 'c@d.de']));
   rmSync(dir, { recursive: true, force: true });
+});
+
+test('ein Abbruch stoppt vor der nächsten Mail, nicht mitten in einer', async () => {
+  const { log, dir } = tempLog();
+  const controller = new AbortController();
+  const transport = fakeTransport((mail, count) => {
+    if (count === 2) controller.abort(); // während der zweiten Zustellung
+    return { messageId: 'ok' };
+  });
+
+  const result = await sendCampaign({
+    recipients: recipientsFor('a@b.de', 'c@d.de', 'e@f.de', 'g@h.de'),
+    template,
+    envelope: {},
+    transport,
+    log,
+    limits: noWait,
+    signal: controller.signal,
+    sleepFn: async () => {},
+  });
+
+  assert.equal(transport.sent.length, 2, 'die laufende Mail wird noch fertig zugestellt');
+  assert.equal(result.sent, 2);
+  assert.equal(result.skipped, 2);
+  assert.match(result.stopReason, /gestoppt/i);
+  assert.equal(new SendLog(log.path).summary().sent, 2, 'das Protokoll kennt die zwei Zustellungen');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('ein bereits abgebrochener Lauf sendet gar nichts', async () => {
+  const { log, dir } = tempLog();
+  const transport = fakeTransport();
+
+  const result = await sendCampaign({
+    recipients: recipientsFor('a@b.de', 'c@d.de'),
+    template,
+    envelope: {},
+    transport,
+    log,
+    limits: noWait,
+    signal: AbortSignal.abort(),
+    sleepFn: async () => {},
+  });
+
+  assert.equal(transport.sent.length, 0);
+  assert.equal(result.skipped, 2);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('sleep bricht sofort ab, wenn das Signal ausgelöst wird', async () => {
+  const controller = new AbortController();
+  const started = Date.now();
+  const waiting = sleep(60_000, controller.signal);
+  controller.abort();
+  await waiting;
+  assert.ok(Date.now() - started < 1000, 'die Pause darf den Stop nicht blockieren');
 });

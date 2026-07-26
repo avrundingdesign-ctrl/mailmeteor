@@ -8,7 +8,8 @@
   },
   "scripts": {
     "test": "node --test test/*.test.js",
-    "send": "node src/cli.js"
+    "send": "node src/cli.js",
+    "ui": "node src/server.js"
   },
   "repository": {
     "type": "git",

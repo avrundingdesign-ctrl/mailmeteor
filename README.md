@@ -28,6 +28,40 @@ Der harte Teil ist nie das Versenden, sondern **im Postfach zu landen**. Dabei
 hilft keine Software, sondern eine korrekt eingerichtete Absenderdomain und eine
 Liste, die dich erwartet.
 
+## Oberfläche im Browser
+
+```bash
+npm install
+npm run ui          # öffnet http://127.0.0.1:4000
+```
+
+Drei Schritte: **Adressen einfügen → Inhalt schreiben → prüfen und senden.**
+
+- **Adressen per Copy & Paste.** Keine Datei, keine Tabelle nötig – rein damit,
+  egal ob eine pro Zeile, durch Komma oder Semikolon getrennt, als
+  `Anna Müller <anna@example.com>` oder als `mailto:`-Link. Doppelte und
+  offensichtlich kaputte Adressen werden sofort aussortiert und angezeigt.
+  Aus dem Namen entstehen die Platzhalter `{{vorname}}` und `{{name}}`; wer
+  lieber eine CSV mit eigenen Spalten einfügt, kann das ebenfalls tun – das
+  Format wird an der ersten Zeile erkannt.
+- **Formatierung** mit Fett, Kursiv, Unterstrichen, Überschrift, Liste, Zitat
+  und Links. Eingefügter Text aus Word oder dem Web wird auf einfache
+  Auszeichnungen reduziert, damit keine fremden Stile in der Mail landen.
+  Alternativ per Häkchen als reiner Text senden.
+- **Live-Vorschau** rechts, für jeden Empfänger einzeln durchblätterbar – exakt
+  die Mail, die dieser Empfänger bekommt, gerendert vom selben Code, der später
+  versendet. Fehlende Platzhalter werden dort gemeldet.
+- **Prüfliste vor dem Versand**: Empfängerzahl, Absender, Betreff, geschätzte
+  Dauer, Warnung beim Überschreiten üblicher Tageslimits.
+- **Probelauf, Testmail an dich selbst, Rückfrage vor dem echten Versand**,
+  Fortschritt in Echtzeit und ein **Stop-Knopf**, der sauber zwischen zwei Mails
+  anhält – die laufende Zustellung wird noch beendet, der Rest bleibt offen.
+- Der Entwurf überlebt ein Neuladen der Seite; das Protokoll sorgt dafür, dass
+  ein zweiter Lauf nur die noch offenen Adressen anschreibt.
+
+Der Server hört bewusst nur auf `127.0.0.1` und hat keine Anmeldung: die Seite
+darf Mails verschicken und gehört deshalb nicht ins Netz.
+
 ## Einrichtung
 
 ```bash
@@ -42,7 +76,9 @@ Google für SMTP abgelehnt.
 Für `gmail.com`, `outlook.com`, `web.de` und `gmx.de` werden Server und Port
 automatisch gesetzt – in der `.env` genügen dann `SMTP_USER` und `SMTP_PASS`.
 
-## Verwendung
+## Verwendung auf der Kommandozeile
+
+Wer lieber skriptet, nutzt dieselben Funktionen ohne Oberfläche.
 
 **1. Empfängerliste** als CSV. Nötig ist nur eine Spalte `email`; jede weitere
 Spalte lässt sich im Text als Platzhalter verwenden:
@@ -131,12 +167,14 @@ dem Serienmails typischerweise teuer werden, nicht die Technik.
 | Datei | Aufgabe |
 | --- | --- |
 | `src/cli.js` | Kommandozeile, Vorschau, Ausgabe |
-| `src/recipients.js` | CSV einlesen, Adressen prüfen, Duplikate aussortieren |
+| `src/server.js` | lokaler Server für die Oberfläche (nur 127.0.0.1) |
+| `web/` | die Oberfläche: drei Schritte, Editor, Live-Vorschau |
+| `src/recipients.js` | eingefügte Adressen und CSV einlesen, Duplikate aussortieren |
 | `src/template.js` | Platzhalter, Kopfblock, HTML→Text |
 | `src/transport.js` | SMTP-Verbindung, Anbieter-Voreinstellungen |
 | `src/sender.js` | Versandschleife, Pausen, Wiederholversuche |
 | `src/log.js` | Protokoll, Fortsetzen nach Abbruch |
 
 ```bash
-npm test    # 45 Tests, ohne Netzwerkzugriff
+npm test    # 57 Tests, ohne Netzwerkzugriff
 ```
