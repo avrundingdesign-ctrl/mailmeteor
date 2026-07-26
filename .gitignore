@@ -1,0 +1,9 @@
+node_modules/
+
+# Zugangsdaten
+.env
+.env.local
+
+# Versandprotokolle und echte Empfängerlisten gehören nicht ins Repository
+.mailmeteor/
+*.local.csv

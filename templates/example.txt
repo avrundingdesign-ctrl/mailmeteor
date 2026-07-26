@@ -1,0 +1,12 @@
+---
+subject: Kurze Frage, {{vorname}}
+---
+Hallo {{vorname}},
+
+ich habe gesehen, dass {{firma|dein Team}} gerade an spannenden Dingen arbeitet,
+und wollte mich kurz melden.
+
+Falls das gerade nicht passt, einfach ignorieren.
+
+Viele Grüße
+Max Mustermann
