@@ -19,6 +19,9 @@ import { buildMessage, parseFrontMatter, placeholderNames, stripHtmlComments } f
 import { SendLog, campaignLogPath } from './log.js';
 import { createTransport, loadSmtpConfig, verifyTransport } from './transport.js';
 import { sendCampaign } from './sender.js';
+import { buildSentIndex, fetchReplies, loadImapConfig } from './inbox.js';
+import { ReplyStore, replyStorePath } from './replies.js';
+import { askAboutReplies, createClient, loadAssistantConfig } from './assistant.js';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const WEB_DIR = join(ROOT, 'web');
@@ -173,7 +176,10 @@ async function handleState(res) {
 
   let campaigns = [];
   if (existsSync(LOG_DIR)) {
-    const files = (await readdir(LOG_DIR)).filter((f) => f.endsWith('.jsonl'));
+    const files = (await readdir(LOG_DIR)).filter(
+      // "antworten-*.jsonl" gehört zum Postfach, nicht zur Kampagnenliste.
+      (f) => f.endsWith('.jsonl') && !f.startsWith('antworten-'),
+    );
     campaigns = files.map((file) => {
       const log = new SendLog(join(LOG_DIR, file));
       const last = log.entries.at(-1);
@@ -191,10 +197,23 @@ async function handleState(res) {
     templates = (await readdir(TEMPLATE_DIR)).filter((f) => /\.(html?|txt|md)$/i.test(f));
   }
 
+  // Bewusst nur "eingerichtet ja/nein" plus Fehlertext – weder Passwort noch
+  // API-Schlüssel verlassen den Server.
+  const capability = (load) => {
+    try {
+      load();
+      return { configured: true };
+    } catch (error) {
+      return { configured: false, error: error.message };
+    }
+  };
+
   json(res, 200, {
     smtp: smtp
       ? { configured: true, from: smtp.from, host: smtp.host, port: smtp.port, user: smtp.auth.user }
       : { configured: false, error: smtpError },
+    imap: capability(() => loadImapConfig()),
+    assistant: capability(() => loadAssistantConfig()),
     campaigns,
     templates,
   });
@@ -336,6 +355,177 @@ function handleLog(res, campaign) {
 }
 
 // ---------------------------------------------------------------------------
+// Antworten
+// ---------------------------------------------------------------------------
+
+/** Beginnt eine NDJSON-Antwort und liefert die Sende-Funktion dafür. */
+function startStream(req, res) {
+  const controller = new AbortController();
+  req.on('close', () => controller.abort());
+
+  res.writeHead(200, {
+    'content-type': 'application/x-ndjson; charset=utf-8',
+    'cache-control': 'no-store',
+    'x-accel-buffering': 'no',
+  });
+
+  return {
+    signal: controller.signal,
+    emit: (event) => {
+      if (!res.writableEnded) res.write(`${JSON.stringify(event)}\n`);
+    },
+  };
+}
+
+function storeFor(campaign) {
+  return new ReplyStore(replyStorePath(LOG_DIR, campaign));
+}
+
+/** Gespeicherte Antworten einer Kampagne – ohne den vollen Text. */
+function handleReplies(res, campaign) {
+  const store = storeFor(campaign);
+  json(res, 200, {
+    campaign,
+    lastSyncAt: store.lastSyncAt(),
+    ...store.summary(),
+    // Der Volltext bleibt hier weg: die Liste soll schlank laden.
+    replies: store.all().map(({ text, html, ...rest }) => rest),
+  });
+}
+
+/** Eine einzelne Antwort samt vollem Text. */
+function handleReply(res, campaign, id) {
+  const reply = storeFor(campaign).byId(id);
+  if (!reply) return json(res, 404, { error: `Es gibt keine Antwort mit der Nummer ${id}.` });
+  json(res, 200, reply);
+}
+
+/**
+ * Holt die Antworten aus dem Postfach und meldet den Fortschritt laufend.
+ *
+ * Zugeordnet wird über die beim Versand protokollierte Message-ID, ersatzweise
+ * über die Absenderadresse – alles andere im Postfach bleibt unangetastet.
+ */
+async function handleSync(req, res) {
+  const payload = await readJsonBody(req);
+  const campaign = payload.campaign || 'kampagne';
+
+  const log = new SendLog(campaignLogPath(LOG_DIR, campaign));
+  const sentIndex = buildSentIndex(log.entries);
+
+  let config;
+  try {
+    config = loadImapConfig();
+  } catch (error) {
+    return json(res, 400, { error: error.message });
+  }
+  if (sentIndex.byAddress.size === 0) {
+    return json(res, 400, {
+      error: `Für "${campaign}" wurde noch nichts versendet – es kann auch nichts zurückkommen.`,
+    });
+  }
+
+  const { emit, signal } = startStream(req, res);
+  const store = storeFor(campaign);
+
+  try {
+    const { replies, checked } = await fetchReplies({
+      config,
+      sentIndex,
+      signal,
+      onProgress: (event) => emit(event),
+    });
+
+    for (const reply of replies) store.upsert(reply);
+    store.recordSync({ checked, matched: replies.length });
+
+    emit({ type: 'done', checked, matched: replies.length, ...store.summary() });
+  } catch (error) {
+    emit({ type: 'error', message: error.message });
+  } finally {
+    res.end();
+  }
+}
+
+/** Frage an die KI, Antwort als Strom. */
+async function handleChat(req, res) {
+  const payload = await readJsonBody(req);
+  const campaign = payload.campaign || 'kampagne';
+
+  let client;
+  try {
+    client = createClient(loadAssistantConfig());
+  } catch (error) {
+    return json(res, 400, { error: error.message });
+  }
+
+  const replies = storeFor(campaign).all();
+  if (replies.length === 0) {
+    return json(res, 400, { error: 'Es sind noch keine Antworten abgerufen, die durchsucht werden könnten.' });
+  }
+
+  const { emit, signal } = startStream(req, res);
+
+  try {
+    await askAboutReplies({
+      client,
+      replies,
+      question: payload.question,
+      history: Array.isArray(payload.history) ? payload.history : [],
+      signal,
+      onEvent: (event) => emit(event),
+    });
+  } catch (error) {
+    emit({ type: 'error', message: error.message });
+  } finally {
+    res.end();
+  }
+}
+
+/**
+ * Antwortet auf eine Antwort – im selben Gesprächsfaden.
+ *
+ * In-Reply-To und References sorgen dafür, dass die Mail beim Empfänger unter
+ * der ursprünglichen Unterhaltung einsortiert wird und nicht als neue Mail.
+ */
+async function handleAnswer(req, res) {
+  const payload = await readJsonBody(req);
+  const campaign = payload.campaign || 'kampagne';
+  const store = storeFor(campaign);
+  const original = store.byId(payload.id);
+
+  if (!original) return json(res, 404, { error: `Es gibt keine Antwort mit der Nummer ${payload.id}.` });
+  if (!payload.text?.trim()) return json(res, 400, { error: 'Ohne Text wird nichts verschickt.' });
+
+  let smtp;
+  try {
+    smtp = loadSmtpConfig();
+  } catch (error) {
+    return json(res, 400, { error: error.message });
+  }
+
+  const transport = createTransport(smtp);
+  try {
+    await verifyTransport(transport);
+    const info = await transport.sendMail({
+      from: smtp.from,
+      to: original.from.address,
+      subject: /^(re|aw):/i.test(original.subject) ? original.subject : `Re: ${original.subject}`,
+      text: payload.text,
+      inReplyTo: `<${original.messageId}>`,
+      references: [original.inReplyTo, original.messageId].filter(Boolean).map((id) => `<${id}>`),
+    });
+
+    store.markAnswered(original.messageId);
+    json(res, 200, { sent: true, to: original.from.address, messageId: info.messageId });
+  } catch (error) {
+    json(res, 400, { error: `Antwort konnte nicht versendet werden: ${error.message}` });
+  } finally {
+    transport.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Server
 // ---------------------------------------------------------------------------
 
@@ -364,6 +554,19 @@ export function createUiServer() {
       if (req.method === 'GET' && url.pathname === '/api/log') {
         return handleLog(res, url.searchParams.get('campaign') ?? 'kampagne');
       }
+      if (req.method === 'GET' && url.pathname === '/api/replies') {
+        return handleReplies(res, url.searchParams.get('campaign') ?? 'kampagne');
+      }
+      if (req.method === 'GET' && url.pathname === '/api/reply') {
+        return handleReply(
+          res,
+          url.searchParams.get('campaign') ?? 'kampagne',
+          url.searchParams.get('id'),
+        );
+      }
+      if (req.method === 'POST' && url.pathname === '/api/replies/sync') return await handleSync(req, res);
+      if (req.method === 'POST' && url.pathname === '/api/replies/answer') return await handleAnswer(req, res);
+      if (req.method === 'POST' && url.pathname === '/api/chat') return await handleChat(req, res);
       if (req.method === 'POST' && url.pathname === '/api/analyze') return await handleAnalyze(req, res);
       if (req.method === 'POST' && url.pathname === '/api/send') return await handleSend(req, res);
       if (req.method === 'GET') return await serveStatic(res, url.pathname);

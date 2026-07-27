@@ -902,3 +902,283 @@ dialog::backdrop {
   box-shadow: var(--shadow);
   z-index: 10;
 }
+
+/* ------------------------------------------------------------- Antworten */
+
+.replies-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+  gap: 14px;
+  margin-top: 16px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .replies-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.reply-list {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-2);
+  max-height: 460px;
+  overflow: auto;
+}
+
+.reply-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  color: var(--ink);
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.reply-item:last-child {
+  border-bottom: 0;
+}
+
+.reply-item:hover {
+  background: var(--panel);
+}
+
+.reply-item.active {
+  background: var(--accent-soft);
+}
+
+.reply-item .who {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.reply-item .when {
+  font-weight: 400;
+  color: var(--ink-soft);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.reply-item .subject {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+
+.reply-item .snippet {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  margin-top: 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tags {
+  display: flex;
+  gap: 5px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.tag {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+}
+
+.tag.auto {
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-color: transparent;
+}
+
+.tag.done {
+  background: var(--ok-soft);
+  color: var(--ok);
+  border-color: transparent;
+}
+
+.reply-detail {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-2);
+  padding: 14px;
+  min-height: 240px;
+}
+
+.reply-detail .empty-hint {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.reply-detail h3 {
+  font-size: 15px;
+  margin: 0 0 2px;
+}
+
+.reply-detail .meta {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  margin-bottom: 10px;
+}
+
+.reply-body {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 12px;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.reply-body iframe {
+  width: 100%;
+  height: 240px;
+  border: 0;
+  background: #fff;
+}
+
+.answer-box {
+  margin-top: 12px;
+}
+
+.answer-box textarea {
+  font-family: inherit;
+  font-size: 13.5px;
+}
+
+/* ----------------------------------------------------------------- Chat */
+
+.chat {
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+
+.chat-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 14px;
+}
+
+.chat-note {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.chat-log {
+  max-height: 340px;
+  overflow: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chat-intro {
+  font-size: 13px;
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+
+.chat-intro em {
+  color: var(--ink);
+}
+
+.privacy {
+  display: block;
+  margin-top: 2px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 12px;
+}
+
+.bubble {
+  max-width: 82%;
+  padding: 9px 13px;
+  border-radius: 12px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bubble.me {
+  align-self: flex-end;
+  background: var(--accent);
+  color: #fff;
+}
+
+.bubble.ai {
+  align-self: flex-start;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.bubble.tool {
+  align-self: flex-start;
+  background: none;
+  border: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  padding: 0 2px;
+}
+
+.cite {
+  display: inline-block;
+  border: 0;
+  border-radius: 5px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  padding: 0 6px;
+  margin: 0 1px;
+}
+
+.chat-input {
+  display: flex;
+  gap: 8px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.chat-input input {
+  flex: 1;
+}
+
+/* Schritt 4 blendet die Empfänger-Vorschau aus – dort zählt die Antwort. */
+.layout.no-preview {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.layout.no-preview .preview {
+  display: none;
+}

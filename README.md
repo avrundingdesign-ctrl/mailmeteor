@@ -19,6 +19,8 @@ liegt hier fertig. Der Rest von Mailmeteor ist das, was Geld kostet.
 | Mails einzeln nacheinander versenden | **einfach** – hier umgesetzt, ~600 Zeilen |
 | Platzhalter aus einer CSV (`{{vorname}}`) | **einfach** – hier umgesetzt |
 | Pausen, Wiederholversuche, Fortsetzen nach Abbruch | **einfach** – hier umgesetzt |
+| Antworten abrufen und zuordnen | **mittel** – hier umgesetzt (IMAP + Message-ID) |
+| Antworten von einer KI durchsuchen lassen | **mittel** – hier umgesetzt |
 | Öffnungs- und Klick-Tracking | mittel (Zählpixel + Redirect-Server nötig) |
 | Abmelde-Verwaltung, Bounce-Auswertung | mittel bis aufwändig (Postfach auslesen, Adressen sperren) |
 | Zustellbarkeit (SPF, DKIM, DMARC, Reputation) | **das eigentliche Problem** – reine Konfigurations- und Geduldsarbeit |
@@ -62,6 +64,37 @@ Drei Schritte: **Adressen einfügen → Inhalt schreiben → prüfen und senden.
 Der Server hört bewusst nur auf `127.0.0.1` und hat keine Anmeldung: die Seite
 darf Mails verschicken und gehört deshalb nicht ins Netz.
 
+## Antworten lesen und durchsuchen lassen
+
+Der vierte Schritt holt die Antworten auf eine Kampagne aus deinem Postfach und
+lässt sie von Claude durchsuchen.
+
+**Abrufen.** Zugeordnet wird über die Message-ID, die beim Versand vergeben und
+protokolliert wurde – das ist eindeutig. Wer statt „Antworten" eine neue Mail
+schreibt, wird über die Absenderadresse erkannt. Alles andere im Postfach bleibt
+unangetastet; gelesen wird nur ab dem Zeitpunkt der ersten versendeten Mail.
+Abwesenheitsnotizen werden erkannt und als solche gekennzeichnet, statt sie
+wegzuwerfen.
+
+**Fragen.** Im Chatfenster fragst du in eigenen Worten:
+
+> Wer hat mir geschrieben, dass noch Plätze frei sind?
+
+Die Antwort verlinkt jeden Treffer als `#1`, `#3` … – ein Klick öffnet genau
+diese Mail, daneben kannst du direkt antworten. Die Antwort geht im selben
+Gesprächsfaden raus (`In-Reply-To` und `References` gesetzt), landet also beim
+Empfänger unter der ursprünglichen Unterhaltung.
+
+Die KI **liest nur**. Sie kann Mails finden, zusammenfassen und nachschlagen,
+aber nichts verschicken – Antworten schreibst und verschickst du selbst.
+
+**Was das kostet und wohin die Daten gehen.** Für die Suche werden die
+abgerufenen Antwortmails an die Anthropic-API übertragen; sie verlassen dabei
+deinen Rechner. Das steht auch in der Oberfläche über dem Chat. Gerechnet mit
+Claude Opus 5 sind rund 50 Antworten etwa 30.000 Eingabe-Token: die erste Frage
+kostet ungefähr 0,15 $, Folgefragen im selben Chat dank Zwischenspeicher eher
+0,02 $.
+
 ## Einrichtung
 
 ```bash
@@ -75,6 +108,12 @@ Google für SMTP abgelehnt.
 
 Für `gmail.com`, `outlook.com`, `web.de` und `gmx.de` werden Server und Port
 automatisch gesetzt – in der `.env` genügen dann `SMTP_USER` und `SMTP_PASS`.
+
+Für den **Antwort-Abruf** werden dieselben Zugangsdaten verwendet (bei Gmail also
+dasselbe App-Passwort), der IMAP-Server wird ebenso automatisch gesetzt. Für die
+**KI-Suche** brauchst du einen `ANTHROPIC_API_KEY` von console.anthropic.com.
+Fehlt eins von beidem, funktioniert der Rest unverändert weiter – die Oberfläche
+sagt oben rechts, was eingerichtet ist.
 
 ## Verwendung auf der Kommandozeile
 
@@ -174,7 +213,10 @@ dem Serienmails typischerweise teuer werden, nicht die Technik.
 | `src/transport.js` | SMTP-Verbindung, Anbieter-Voreinstellungen |
 | `src/sender.js` | Versandschleife, Pausen, Wiederholversuche |
 | `src/log.js` | Protokoll, Fortsetzen nach Abbruch |
+| `src/inbox.js` | Postfach per IMAP lesen, Antworten der Kampagne zuordnen |
+| `src/replies.js` | Antwortspeicher, Stand „beantwortet" |
+| `src/assistant.js` | Claude-Anbindung: Übersicht, Nur-Lese-Werkzeug, Zitate |
 
 ```bash
-npm test    # 57 Tests, ohne Netzwerkzugriff
+npm test    # 97 Tests, ohne Netzwerkzugriff
 ```

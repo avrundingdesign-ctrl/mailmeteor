@@ -141,6 +141,9 @@ function restoreDraft() {
 function showStep(n) {
   $$('.step').forEach((el) => el.classList.toggle('active', el.dataset.step === String(n)));
   $$('#stepNav button').forEach((el) => el.classList.toggle('active', el.dataset.step === String(n)));
+  // Schritt 4 hat seine eigene Detailansicht – die Empfänger-Vorschau wäre dort
+  // nur eine leere Spalte.
+  document.querySelector('.layout').classList.toggle('no-preview', String(n) === '4');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -655,6 +658,17 @@ async function init() {
       pill.title = data.smtp.error ?? '';
     }
 
+    // Postfach und KI: nur ob eingerichtet – Zugangsdaten bleiben am Server.
+    const ai = $('#aiStatus');
+    const bereit = data.imap?.configured && data.assistant?.configured;
+    ai.className = `pill ${bereit ? 'pill-ok' : 'pill-muted'}`;
+    ai.textContent = bereit
+      ? 'Antworten + KI bereit'
+      : !data.imap?.configured
+        ? 'Kein Postfach-Zugang'
+        : 'Kein API-Schlüssel';
+    ai.title = [data.imap?.error, data.assistant?.error].filter(Boolean).join(' · ');
+
     $('#templateSelect').innerHTML =
       '<option value="">– keine –</option>' +
       data.templates.map((t) => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
@@ -675,3 +689,343 @@ async function init() {
 }
 
 init();
+
+// ==========================================================================
+// Schritt 4: Antworten abrufen, lesen, beantworten – und durchsuchen lassen
+// ==========================================================================
+
+const replyState = {
+  replies: [],
+  selected: null,
+  history: [], // Chatverlauf für Rückfragen
+  chatController: null,
+  busy: false,
+};
+
+function campaignParam() {
+  return encodeURIComponent(state.campaign || 'kampagne');
+}
+
+function formatDate(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+// --------------------------------------------------------------- Übersicht
+
+async function loadReplies() {
+  try {
+    const data = await api(`/api/replies?campaign=${campaignParam()}`);
+    replyState.replies = data.replies;
+    renderReplyList(data);
+  } catch (error) {
+    $('#replyStats').innerHTML = `<span style="color:var(--bad)">${escapeHtml(error.message)}</span>`;
+  }
+}
+
+function renderReplyList(data) {
+  $('#navReplies').textContent = data.total ? `· ${data.total}` : '';
+
+  const parts = [];
+  if (data.total > 0) {
+    const echte = data.total - data.automatic;
+    parts.push(`<span><b>${echte}</b> echte Antwort${echte === 1 ? '' : 'en'}</span>`);
+    if (data.automatic) {
+      parts.push(
+        `<span><b>${data.automatic}</b> Abwesenheitsnotiz${data.automatic === 1 ? '' : 'en'}</span>`,
+      );
+    }
+    if (data.answered) parts.push(`<span><b>${data.answered}</b> beantwortet</span>`);
+  } else {
+    parts.push('<span>Noch nichts abgerufen.</span>');
+  }
+  if (data.lastSyncAt) parts.push(`<span>zuletzt geholt: ${formatDate(data.lastSyncAt)}</span>`);
+  $('#replyStats').innerHTML = parts.join('');
+
+  $('#chatNote').textContent = data.total
+    ? `${data.total} Antworten durchsuchbar`
+    : 'Erst abrufen, dann durchsuchbar';
+
+  $('#replyList').innerHTML = data.replies.length
+    ? data.replies
+        .map((reply) => {
+          const wer = reply.from.name || reply.from.address;
+          const tags = [
+            `<span class="tag">#${reply.id}</span>`,
+            reply.isAutomatic ? '<span class="tag auto">automatisch</span>' : '',
+            reply.answered ? '<span class="tag done">beantwortet</span>' : '',
+            reply.matchedBy === 'address' ? '<span class="tag">über Adresse</span>' : '',
+          ].join('');
+
+          return `<button type="button" class="reply-item" data-id="${reply.id}">
+            <span class="who">${escapeHtml(wer)}<span class="when">${formatDate(reply.date)}</span></span>
+            <span class="subject">${escapeHtml(reply.subject)}</span>
+            <span class="snippet">${escapeHtml(reply.snippet ?? '')}</span>
+            <span class="tags">${tags}</span>
+          </button>`;
+        })
+        .join('')
+    : '<p class="empty-hint" style="padding:14px">Noch keine Antworten abgerufen.</p>';
+
+  $$('#replyList .reply-item').forEach((button) =>
+    button.addEventListener('click', () => openReply(Number(button.dataset.id))),
+  );
+}
+
+// ------------------------------------------------------------------ Detail
+
+async function openReply(id) {
+  showStep(4);
+  $$('#replyList .reply-item').forEach((b) =>
+    b.classList.toggle('active', Number(b.dataset.id) === id),
+  );
+
+  let reply;
+  try {
+    reply = await api(`/api/reply?campaign=${campaignParam()}&id=${id}`);
+  } catch (error) {
+    return toast(error.message, 4000);
+  }
+  replyState.selected = reply;
+
+  const wer = reply.from.name
+    ? `${reply.from.name} <${reply.from.address}>`
+    : reply.from.address;
+
+  // HTML-Mails im abgeschotteten Rahmen: fremdes Markup darf hier nichts tun.
+  const body = reply.html
+    ? `<iframe sandbox="" title="Inhalt der Antwort"></iframe>`
+    : `<div>${escapeHtml(reply.text || '(kein Text)')}</div>`;
+
+  $('#replyDetail').innerHTML = `
+    <h3>${escapeHtml(reply.subject)}</h3>
+    <div class="meta">Von ${escapeHtml(wer)} · ${formatDate(reply.date)}${
+      reply.isAutomatic ? ' · automatische Antwort' : ''
+    }</div>
+    <div class="reply-body">${body}</div>
+    <div class="answer-box">
+      <label class="field">
+        <span>Antwort an ${escapeHtml(reply.from.address)}</span>
+        <textarea id="answerText" rows="4" placeholder="Deine Antwort …"></textarea>
+      </label>
+      <div class="row end">
+        <button type="button" class="primary" id="btnAnswer">Antwort senden</button>
+      </div>
+    </div>`;
+
+  if (reply.html) $('#replyDetail iframe').srcdoc = reply.html;
+  $('#btnAnswer').addEventListener('click', () => sendAnswer(reply.id));
+  $('#replyDetail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function sendAnswer(id) {
+  const text = $('#answerText').value.trim();
+  if (!text) return toast('Ohne Text wird nichts verschickt.');
+
+  const button = $('#btnAnswer');
+  button.disabled = true;
+  button.textContent = 'Wird gesendet …';
+
+  try {
+    const result = await api('/api/replies/answer', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ campaign: state.campaign || 'kampagne', id, text }),
+    });
+    toast(`Antwort an ${result.to} ist raus.`);
+    await loadReplies();
+    await openReply(id);
+  } catch (error) {
+    toast(error.message, 5000);
+    button.disabled = false;
+    button.textContent = 'Antwort senden';
+  }
+}
+
+// ------------------------------------------------------------------- Abruf
+
+async function syncReplies() {
+  const button = $('#btnSync');
+  button.disabled = true;
+  button.textContent = 'Wird abgerufen …';
+  $('#syncFeed').hidden = false;
+  $('#syncFeed').innerHTML = '';
+
+  const row = (text) => {
+    const div = document.createElement('div');
+    div.innerHTML = `<span class="muted">${text}</span>`;
+    $('#syncFeed').prepend(div);
+  };
+
+  try {
+    const res = await fetch('/api/replies/sync', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ campaign: state.campaign || 'kampagne' }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `Fehler ${res.status}`);
+
+    await readNdjson(res, (event) => {
+      if (event.type === 'connected') row(`Mit ${escapeHtml(event.host)} verbunden.`);
+      else if (event.type === 'progress') row(`${event.checked} Mails geprüft, ${event.matched} zugeordnet …`);
+      else if (event.type === 'match') row(`Antwort von ${escapeHtml(event.email)}`);
+      else if (event.type === 'done') {
+        row(`Fertig: ${event.matched} Antworten aus ${event.checked} geprüften Mails.`);
+        toast(`${event.matched} Antworten abgerufen.`);
+      } else if (event.type === 'error') {
+        row(`Fehler: ${escapeHtml(event.message)}`);
+        toast(event.message, 6000);
+      }
+    });
+
+    await loadReplies();
+  } catch (error) {
+    toast(error.message, 6000);
+    row(`Fehler: ${escapeHtml(error.message)}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Antworten abrufen';
+  }
+}
+
+/** Liest einen NDJSON-Strom Zeile für Zeile. */
+async function readNdjson(res, onEvent) {
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let nl;
+    while ((nl = buffer.indexOf('\n')) !== -1) {
+      const line = buffer.slice(0, nl).trim();
+      buffer = buffer.slice(nl + 1);
+      if (line) onEvent(JSON.parse(line));
+    }
+  }
+}
+
+// -------------------------------------------------------------------- Chat
+
+/** Macht aus "[#3]" einen Knopf, der die Mail öffnet. */
+function renderWithCitations(text) {
+  return escapeHtml(text).replace(
+    /\[#(\d+)\]/g,
+    (_, id) => `<button type="button" class="cite" data-cite="${id}">#${id}</button>`,
+  );
+}
+
+function chatBubble(kind, html) {
+  const div = document.createElement('div');
+  div.className = `bubble ${kind}`;
+  div.innerHTML = html;
+  $('#chatLog').append(div);
+  $('#chatLog').scrollTop = $('#chatLog').scrollHeight;
+  return div;
+}
+
+function bindCitations(element) {
+  element.querySelectorAll('[data-cite]').forEach((button) =>
+    button.addEventListener('click', () => openReply(Number(button.dataset.cite))),
+  );
+}
+
+async function askAssistant(question) {
+  if (replyState.busy) return;
+  replyState.busy = true;
+  replyState.chatController = new AbortController();
+  $('#btnAsk').disabled = true;
+  $('#btnStopChat').hidden = false;
+
+  chatBubble('me', escapeHtml(question));
+  let text = '';
+  let toolNote = null;
+  const answer = chatBubble('ai', '<span class="muted">denkt nach …</span>');
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        campaign: state.campaign || 'kampagne',
+        question,
+        history: replyState.history,
+      }),
+      signal: replyState.chatController.signal,
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `Fehler ${res.status}`);
+
+    await readNdjson(res, (event) => {
+      if (event.type === 'text') {
+        text += event.text;
+        answer.innerHTML = renderWithCitations(text);
+        $('#chatLog').scrollTop = $('#chatLog').scrollHeight;
+      } else if (event.type === 'tool') {
+        if (!toolNote) {
+          // Vor die laufende Antwort setzen: der Nachschlag kam ja zuerst.
+          toolNote = document.createElement('div');
+          toolNote.className = 'bubble tool';
+          toolNote.textContent = '↻ liest eine Antwort im Volltext nach …';
+          answer.before(toolNote);
+        }
+      } else if (event.type === 'error') {
+        throw new Error(event.message);
+      }
+    });
+
+    if (!text.trim()) answer.innerHTML = '<span class="muted">(keine Antwort erhalten)</span>';
+    bindCitations(answer);
+
+    // Verlauf mitführen, damit Rückfragen den Zusammenhang behalten.
+    replyState.history.push({ role: 'user', content: question });
+    replyState.history.push({ role: 'assistant', content: text });
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      answer.innerHTML += ' <span class="muted">(gestoppt)</span>';
+      bindCitations(answer);
+    } else {
+      answer.innerHTML = `<span style="color:var(--bad)">${escapeHtml(error.message)}</span>`;
+    }
+  } finally {
+    replyState.busy = false;
+    replyState.chatController = null;
+    $('#btnAsk').disabled = false;
+    $('#btnStopChat').hidden = true;
+  }
+}
+
+// ------------------------------------------------------------------ Bindung
+
+function bindReplies() {
+  $('#btnSync').addEventListener('click', syncReplies);
+  $('#btnStopChat').addEventListener('click', () => replyState.chatController?.abort());
+
+  $('#chatForm').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const question = $('#chatQuestion').value.trim();
+    if (!question) return;
+    $('#chatQuestion').value = '';
+    askAssistant(question);
+  });
+
+  // Beim Wechsel auf den Schritt und bei Kampagnenwechsel neu laden.
+  $$('#stepNav button[data-step="4"], [data-goto="4"]').forEach((b) =>
+    b.addEventListener('click', loadReplies),
+  );
+  $('#campaign').addEventListener('change', () => {
+    replyState.history = [];
+    loadReplies();
+  });
+}
+
+bindReplies();
+loadReplies();

@@ -26,6 +26,7 @@
           <input id="campaign" type="text" value="kampagne" spellcheck="false" />
         </label>
         <div id="smtpStatus" class="pill pill-muted">SMTP wird geprüft …</div>
+        <div id="aiStatus" class="pill pill-muted">Antworten werden geprüft …</div>
       </div>
     </header>
 
@@ -35,6 +36,9 @@
       </button>
       <button type="button" data-step="2"><span class="num">2</span> Inhalt</button>
       <button type="button" data-step="3"><span class="num">3</span> Prüfen &amp; Senden</button>
+      <button type="button" data-step="4">
+        <span class="num">4</span> Antworten <em id="navReplies"></em>
+      </button>
     </nav>
 
     <main class="layout">
@@ -204,6 +208,62 @@
 
           <div class="row end">
             <button type="button" class="ghost" data-goto="2">← Zurück zum Inhalt</button>
+          </div>
+        </section>
+
+        <!-- ------------------------------------------------ Schritt 4 -->
+        <section class="step" data-step="4">
+          <h2>Antworten</h2>
+          <p class="hint">
+            Holt die Antworten auf diese Kampagne aus deinem Postfach. Zugeordnet wird über die
+            beim Versand vergebene Message-ID, ersatzweise über die Absenderadresse – der Rest
+            deines Postfachs bleibt unberührt.
+          </p>
+
+          <div class="row between wrap">
+            <div id="replyStats" class="stats"></div>
+            <button type="button" class="primary" id="btnSync">Antworten abrufen</button>
+          </div>
+
+          <div id="syncFeed" class="feed" hidden></div>
+
+          <div class="replies-layout">
+            <div class="reply-list" id="replyList"></div>
+
+            <div class="reply-detail" id="replyDetail">
+              <p class="empty-hint">Links eine Antwort auswählen, um sie hier zu lesen.</p>
+            </div>
+          </div>
+
+          <div class="chat">
+            <div class="chat-head">
+              <strong>In den Antworten suchen</strong>
+              <span class="chat-note" id="chatNote"></span>
+            </div>
+
+            <div id="chatLog" class="chat-log">
+              <div class="chat-intro">
+                Frag in eigenen Worten, wonach gesucht werden soll – zum Beispiel:
+                <em>„Wer hat geschrieben, dass noch Plätze frei sind?"</em><br />
+                Die Treffer werden als Nummer verlinkt und öffnen die Mail oben rechts.
+                <br /><br />
+                <span class="privacy">
+                  Für die Suche werden die abgerufenen Antwortmails an die Anthropic-API
+                  übertragen. Sie verlassen dabei deinen Rechner.
+                </span>
+              </div>
+            </div>
+
+            <form class="chat-input" id="chatForm">
+              <input
+                id="chatQuestion"
+                type="text"
+                autocomplete="off"
+                placeholder="Wer hat geschrieben, dass noch Plätze frei sind?"
+              />
+              <button type="submit" class="primary" id="btnAsk">Fragen</button>
+              <button type="button" class="danger" id="btnStopChat" hidden>Stoppen</button>
+            </form>
           </div>
         </section>
       </div>
