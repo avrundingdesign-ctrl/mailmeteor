@@ -21,14 +21,26 @@
       </div>
 
       <div class="top-right">
-        <label class="field inline">
-          <span>Kampagne</span>
-          <input id="campaign" type="text" value="kampagne" spellcheck="false" />
-        </label>
         <div id="smtpStatus" class="pill pill-muted">SMTP wird geprüft …</div>
         <div id="aiStatus" class="pill pill-muted">Antworten werden geprüft …</div>
       </div>
     </header>
+
+    <nav class="views" id="viewNav">
+      <button type="button" data-view="new" class="active">Neue Kampagne</button>
+      <button type="button" data-view="list">
+        Kampagnen <em id="campaignCount"></em>
+      </button>
+    </nav>
+
+    <div class="view active" data-view="new">
+    <div class="campaign-bar">
+      <label class="field inline">
+        <span>Name dieser Kampagne</span>
+        <input id="campaign" type="text" value="" placeholder="z. B. campingplaetze" spellcheck="false" />
+      </label>
+      <span class="campaign-note" id="campaignNote"></span>
+    </div>
 
     <nav class="steps" id="stepNav">
       <button type="button" data-step="1" class="active">
@@ -36,9 +48,6 @@
       </button>
       <button type="button" data-step="2"><span class="num">2</span> Inhalt</button>
       <button type="button" data-step="3"><span class="num">3</span> Prüfen &amp; Senden</button>
-      <button type="button" data-step="4">
-        <span class="num">4</span> Antworten <em id="navReplies"></em>
-      </button>
     </nav>
 
     <main class="layout">
@@ -211,9 +220,89 @@
           </div>
         </section>
 
-        <!-- ------------------------------------------------ Schritt 4 -->
-        <section class="step" data-step="4">
-          <h2>Antworten</h2>
+      </div>
+
+      <!-- ------------------------------------------------ Vorschau -->
+      <aside class="preview">
+        <div class="preview-head">
+          <strong>Vorschau</strong>
+          <div class="switcher">
+            <button type="button" id="prevBtn" title="Vorheriger Empfänger">‹</button>
+            <span id="previewIndex">–</span>
+            <button type="button" id="nextBtn" title="Nächster Empfänger">›</button>
+          </div>
+        </div>
+
+        <div class="mail-card">
+          <div class="mail-head">
+            <div><span class="label">Von</span> <span id="previewFrom">–</span></div>
+            <div><span class="label">An</span> <span id="previewTo">–</span></div>
+            <div class="subject" id="previewSubject">–</div>
+          </div>
+          <iframe id="previewFrame" sandbox="" title="Vorschau der Mail"></iframe>
+          <pre id="previewText" hidden></pre>
+        </div>
+
+        <div id="missingWarn" class="warn" hidden></div>
+
+        <div class="preview-foot">
+          <p>
+            So kommt die Mail bei <span id="previewToFoot">diesem Empfänger</span> an – mit den für
+            ihn eingesetzten Platzhaltern.
+          </p>
+        </div>
+      </aside>
+    </main>
+    </div>
+
+    <div class="view" data-view="list">
+      <main class="layout single">
+        <div class="work">
+          <!-- Übersicht aller Kampagnen -->
+          <section class="panel" id="campaignListPanel">
+            <h2>Kampagnen</h2>
+            <p class="hint">
+              Jede versendete Kampagne wird mit Empfängern und Mailtext gespeichert. Klick auf
+              eine, um sie anzusehen, die Antworten zu holen und sie von der KI durchsuchen zu
+              lassen.
+            </p>
+            <div id="campaignList" class="campaign-list"></div>
+          </section>
+
+          <!-- Eine Kampagne im Detail -->
+          <section class="panel" id="campaignDetailPanel" hidden>
+            <div class="row between wrap">
+              <button type="button" class="link" id="btnBackToList">← Alle Kampagnen</button>
+              <button type="button" class="ghost" id="btnResume">In den Assistenten laden</button>
+            </div>
+
+            <h2 id="detailName">–</h2>
+            <div id="detailSummary" class="stats"></div>
+
+            <div class="detail-grid">
+              <div>
+                <h3 class="section-title">Empfänger</h3>
+                <div id="detailRecipients" class="recipient-table"></div>
+              </div>
+              <div>
+                <h3 class="section-title">Verschickte Mail</h3>
+                <div class="mail-card">
+                  <div class="mail-head">
+                    <div><span class="label">Von</span> <span id="detailFrom">–</span></div>
+                    <div class="subject" id="detailSubject">–</div>
+                  </div>
+                  <iframe id="detailFrame" sandbox="" title="Verschickte Mail"></iframe>
+                  <pre id="detailText" hidden></pre>
+                </div>
+                <p class="preview-note">
+                  Die Vorlage, wie sie verschickt wurde – Platzhalter wurden je Empfänger
+                  eingesetzt.
+                </p>
+              </div>
+            </div>
+
+        <section class="replies-section">
+          <h3 class="section-title">Antworten</h3>
           <p class="hint">
             Holt die Antworten auf diese Kampagne aus deinem Postfach. Zugeordnet wird über die
             beim Versand vergebene Message-ID, ersatzweise über die Absenderadresse – der Rest
@@ -266,39 +355,10 @@
             </form>
           </div>
         </section>
-      </div>
-
-      <!-- ------------------------------------------------ Vorschau -->
-      <aside class="preview">
-        <div class="preview-head">
-          <strong>Vorschau</strong>
-          <div class="switcher">
-            <button type="button" id="prevBtn" title="Vorheriger Empfänger">‹</button>
-            <span id="previewIndex">–</span>
-            <button type="button" id="nextBtn" title="Nächster Empfänger">›</button>
-          </div>
+          </section>
         </div>
-
-        <div class="mail-card">
-          <div class="mail-head">
-            <div><span class="label">Von</span> <span id="previewFrom">–</span></div>
-            <div><span class="label">An</span> <span id="previewTo">–</span></div>
-            <div class="subject" id="previewSubject">–</div>
-          </div>
-          <iframe id="previewFrame" sandbox="" title="Vorschau der Mail"></iframe>
-          <pre id="previewText" hidden></pre>
-        </div>
-
-        <div id="missingWarn" class="warn" hidden></div>
-
-        <div class="preview-foot">
-          <p>
-            So kommt die Mail bei <span id="previewToFoot">diesem Empfänger</span> an – mit den für
-            ihn eingesetzten Platzhaltern.
-          </p>
-        </div>
-      </aside>
-    </main>
+      </main>
+    </div>
 
     <dialog id="confirmDialog">
       <form method="dialog">

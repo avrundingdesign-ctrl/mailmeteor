@@ -109,7 +109,11 @@ test('eine Antwort ohne Message-ID wird abgelehnt', () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('replyStorePath erzeugt sichere Dateinamen', () => {
-  assert.equal(replyStorePath('.mailmeteor', 'Sommer Aktion'), '.mailmeteor/antworten-sommer-aktion.jsonl');
-  assert.equal(replyStorePath('.mailmeteor', '../../etc/passwd'), '.mailmeteor/antworten-etc-passwd.jsonl');
+test('replyStorePath legt Antworten in einen eigenen Ordner', () => {
+  assert.equal(replyStorePath('.mailmeteor', 'Sommer Aktion'), '.mailmeteor/antworten/sommer-aktion.jsonl');
+  assert.equal(replyStorePath('.mailmeteor', '../../etc/passwd'), '.mailmeteor/antworten/etc-passwd.jsonl');
+});
+
+test('eine Kampagne namens "antworten-x" kollidiert nicht mit dem Speicher', () => {
+  assert.equal(replyStorePath('.mailmeteor', 'antworten-x'), '.mailmeteor/antworten/antworten-x.jsonl');
 });

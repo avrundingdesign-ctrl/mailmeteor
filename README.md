@@ -37,7 +37,10 @@ npm install
 npm run ui          # öffnet http://127.0.0.1:4000
 ```
 
-Drei Schritte: **Adressen einfügen → Inhalt schreiben → prüfen und senden.**
+Zwei Bereiche im Menü:
+
+**Neue Kampagne** – der Assistent in drei Schritten:
+**Adressen einfügen → Inhalt schreiben → prüfen und senden.**
 
 - **Adressen per Copy & Paste.** Keine Datei, keine Tabelle nötig – rein damit,
   egal ob eine pro Zeile, durch Komma oder Semikolon getrennt, als
@@ -60,6 +63,20 @@ Drei Schritte: **Adressen einfügen → Inhalt schreiben → prüfen und senden.
   anhält – die laufende Zustellung wird noch beendet, der Rest bleibt offen.
 - Der Entwurf überlebt ein Neuladen der Seite; das Protokoll sorgt dafür, dass
   ein zweiter Lauf nur die noch offenen Adressen anschreibt.
+
+**Kampagnen** – alles, was schon rausging. Jede Kampagne wird beim echten Versand
+gespeichert (ein Probelauf legt nichts an): Betreff, Mailtext, Empfängerliste.
+Ein Klick auf eine Kampagne zeigt
+
+- den Stand je Empfänger (zugestellt, fehlgeschlagen mit Grund, noch offen),
+- die verschickte Mail,
+- die Antworten samt KI-Suche – jede Frage bezieht sich nur auf **diese** Kampagne,
+- und den Knopf **In den Assistenten laden**, der sie zum Fortsetzen zurückholt;
+  bereits zugestellte Adressen bleiben dabei übersprungen.
+
+Der Name wird beim Tippen des Betreffs vorgeschlagen und ist frei änderbar. Er
+entscheidet, welche Mails zusammengehören – also auch, worauf sich die KI-Suche
+bezieht.
 
 Der Server hört bewusst nur auf `127.0.0.1` und hat keine Anmeldung: die Seite
 darf Mails verschicken und gehört deshalb nicht ins Netz.
@@ -213,10 +230,11 @@ dem Serienmails typischerweise teuer werden, nicht die Technik.
 | `src/transport.js` | SMTP-Verbindung, Anbieter-Voreinstellungen |
 | `src/sender.js` | Versandschleife, Pausen, Wiederholversuche |
 | `src/log.js` | Protokoll, Fortsetzen nach Abbruch |
+| `src/campaigns.js` | Kampagnen speichern, auflisten, Stand je Empfänger |
 | `src/inbox.js` | Postfach per IMAP lesen, Antworten der Kampagne zuordnen |
 | `src/replies.js` | Antwortspeicher, Stand „beantwortet" |
 | `src/assistant.js` | Claude-Anbindung: Übersicht, Nur-Lese-Werkzeug, Zitate |
 
 ```bash
-npm test    # 97 Tests, ohne Netzwerkzugriff
+npm test    # 114 Tests, ohne Netzwerkzugriff
 ```

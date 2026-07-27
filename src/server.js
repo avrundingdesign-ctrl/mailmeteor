@@ -22,6 +22,13 @@ import { sendCampaign } from './sender.js';
 import { buildSentIndex, fetchReplies, loadImapConfig } from './inbox.js';
 import { ReplyStore, replyStorePath } from './replies.js';
 import { askAboutReplies, createClient, loadAssistantConfig } from './assistant.js';
+import {
+  listCampaignNames,
+  loadManifest,
+  recipientStatus,
+  saveManifest,
+  summarize,
+} from './campaigns.js';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const WEB_DIR = join(ROOT, 'web');
@@ -174,23 +181,7 @@ async function handleState(res) {
     smtpError = error.message;
   }
 
-  let campaigns = [];
-  if (existsSync(LOG_DIR)) {
-    const files = (await readdir(LOG_DIR)).filter(
-      // "antworten-*.jsonl" gehört zum Postfach, nicht zur Kampagnenliste.
-      (f) => f.endsWith('.jsonl') && !f.startsWith('antworten-'),
-    );
-    campaigns = files.map((file) => {
-      const log = new SendLog(join(LOG_DIR, file));
-      const last = log.entries.at(-1);
-      return {
-        name: file.replace(/\.jsonl$/, ''),
-        ...log.summary(),
-        lastAt: last?.at ?? null,
-      };
-    });
-    campaigns.sort((a, b) => String(b.lastAt).localeCompare(String(a.lastAt)));
-  }
+  const campaigns = collectCampaigns();
 
   let templates = [];
   if (existsSync(TEMPLATE_DIR)) {
@@ -216,6 +207,38 @@ async function handleState(res) {
     assistant: capability(() => loadAssistantConfig()),
     campaigns,
     templates,
+  });
+}
+
+/** Alle Kampagnen mit Kurzfassung, neueste zuerst. */
+function collectCampaigns() {
+  return listCampaignNames(LOG_DIR)
+    .map((name) =>
+      summarize({
+        name,
+        manifest: loadManifest(LOG_DIR, name),
+        logEntries: new SendLog(campaignLogPath(LOG_DIR, name)).entries,
+        replySummary: storeFor(name).summary(),
+      }),
+    )
+    .sort((a, b) => String(b.lastActivityAt ?? '').localeCompare(String(a.lastActivityAt ?? '')));
+}
+
+/** Eine Kampagne im Detail: Inhalt, Empfänger mit Stand, Antworten. */
+function handleCampaign(res, name) {
+  const manifest = loadManifest(LOG_DIR, name);
+  const log = new SendLog(campaignLogPath(LOG_DIR, name));
+
+  if (!manifest && log.entries.length === 0) {
+    return json(res, 404, { error: `Die Kampagne "${name}" gibt es nicht.` });
+  }
+
+  json(res, 200, {
+    ...summarize({ name, manifest, logEntries: log.entries, replySummary: storeFor(name).summary() }),
+    manifest,
+    recipients: recipientStatus(manifest, log.entries),
+    replies: storeFor(name).summary(),
+    lastSyncAt: storeFor(name).lastSyncAt(),
   });
 }
 
@@ -314,6 +337,20 @@ async function handleSend(req, res) {
       emit({ type: 'error', message: `SMTP-Login fehlgeschlagen: ${error.message}` });
       return res.end();
     }
+  }
+
+  // Beim echten Versand festhalten, was diese Kampagne ist – sonst ließe sie
+  // sich später weder ansehen noch fortsetzen.
+  if (!dryRun && !payload.only) {
+    saveManifest(LOG_DIR, payload.campaign || 'kampagne', {
+      subject: plan.template.subject,
+      body: plan.template.body,
+      isHtml: plan.template.isHtml,
+      from: plan.envelope.from,
+      replyTo: plan.envelope.replyTo,
+      attachments: payload.attachments ?? [],
+      recipients: plan.list.recipients,
+    });
   }
 
   emit({ type: 'start', total: plan.queue.length, dryRun, from: plan.envelope.from });
@@ -553,6 +590,12 @@ export function createUiServer() {
       }
       if (req.method === 'GET' && url.pathname === '/api/log') {
         return handleLog(res, url.searchParams.get('campaign') ?? 'kampagne');
+      }
+      if (req.method === 'GET' && url.pathname === '/api/campaigns') {
+        return json(res, 200, { campaigns: collectCampaigns() });
+      }
+      if (req.method === 'GET' && url.pathname === '/api/campaign') {
+        return handleCampaign(res, url.searchParams.get('name') ?? '');
       }
       if (req.method === 'GET' && url.pathname === '/api/replies') {
         return handleReplies(res, url.searchParams.get('campaign') ?? 'kampagne');

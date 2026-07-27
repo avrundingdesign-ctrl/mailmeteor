@@ -1182,3 +1182,244 @@ dialog::backdrop {
 .layout.no-preview .preview {
   display: none;
 }
+
+/* ---------------------------------------------------------- Zwei Bereiche */
+
+.views {
+  display: flex;
+  gap: 6px;
+  padding: 0 22px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.views button {
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 500;
+  padding: 12px 16px;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.views button:hover {
+  color: var(--ink);
+}
+
+.views button.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.views em {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.view {
+  display: none;
+}
+
+.view.active {
+  display: block;
+}
+
+.layout.single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.campaign-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 12px 22px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+}
+
+.campaign-bar .field.inline input {
+  width: 240px;
+}
+
+.campaign-note {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+/* -------------------------------------------------------- Kampagnenliste */
+
+.campaign-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.campaign-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-2);
+  color: var(--ink);
+  padding: 13px 15px;
+  font: inherit;
+}
+
+.campaign-card:hover {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+
+.campaign-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.campaign-head b {
+  font-size: 15px;
+}
+
+.campaign-head .when {
+  font-size: 12px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.campaign-subject {
+  display: block;
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin: 3px 0 7px;
+}
+
+.campaign-card .stats {
+  font-size: 12.5px;
+}
+
+.empty-hint {
+  color: var(--ink-soft);
+  font-size: 13.5px;
+}
+
+/* ---------------------------------------------------------------- Detail */
+
+.section-title {
+  font-size: 14px;
+  margin: 0 0 8px;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+  margin: 18px 0 8px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.recipient-table {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  max-height: 320px;
+  overflow: auto;
+  font-size: 13px;
+}
+
+.recipient-row {
+  display: flex;
+  gap: 9px;
+  align-items: baseline;
+  padding: 6px 11px;
+  border-bottom: 1px solid var(--line);
+}
+
+.recipient-row:last-child {
+  border-bottom: 0;
+}
+
+.recipient-row .mark {
+  width: 12px;
+  color: var(--ink-soft);
+}
+
+.recipient-row.zugestellt .mark {
+  color: var(--ok);
+}
+
+.recipient-row.fehlgeschlagen .mark {
+  color: var(--bad);
+}
+
+.recipient-row .addr {
+  flex: 1;
+  word-break: break-all;
+}
+
+.recipient-row .state {
+  font-size: 12px;
+  color: var(--ink-soft);
+  text-align: right;
+}
+
+.recipient-row.fehlgeschlagen .state {
+  color: var(--bad);
+}
+
+#detailFrame {
+  display: block;
+  width: 100%;
+  height: 260px;
+  border: 0;
+  background: #fff;
+}
+
+#detailText {
+  margin: 0;
+  padding: 13px;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12.5px;
+  color: #17191f;
+  background: #fff;
+}
+
+.replies-section {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+/* Kampagnenansicht: eigene Panels, unabhängig von den Assistenten-Schritten. */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+
+.preview-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+}

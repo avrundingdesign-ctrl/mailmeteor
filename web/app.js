@@ -139,11 +139,11 @@ function restoreDraft() {
 // ------------------------------------------------------------------ Schritte
 
 function showStep(n) {
-  $$('.step').forEach((el) => el.classList.toggle('active', el.dataset.step === String(n)));
+  // Nur die Schritte des Assistenten – die Kampagnenansicht hat eigene Panels.
+  $$('.view[data-view="new"] .step').forEach((el) =>
+    el.classList.toggle('active', el.dataset.step === String(n)),
+  );
   $$('#stepNav button').forEach((el) => el.classList.toggle('active', el.dataset.step === String(n)));
-  // Schritt 4 hat seine eigene Detailansicht – die Empfänger-Vorschau wäre dort
-  // nur eine leere Spalte.
-  document.querySelector('.layout').classList.toggle('no-preview', String(n) === '4');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -695,6 +695,7 @@ init();
 // ==========================================================================
 
 const replyState = {
+  campaign: null, // welche Kampagne gerade offen ist
   replies: [],
   selected: null,
   history: [], // Chatverlauf für Rückfragen
@@ -703,7 +704,11 @@ const replyState = {
 };
 
 function campaignParam() {
-  return encodeURIComponent(state.campaign || 'kampagne');
+  return encodeURIComponent(replyState.campaign ?? state.campaign ?? 'kampagne');
+}
+
+function currentCampaign() {
+  return replyState.campaign ?? state.campaign ?? 'kampagne';
 }
 
 function formatDate(iso) {
@@ -730,9 +735,7 @@ async function loadReplies() {
 }
 
 function renderReplyList(data) {
-  $('#navReplies').textContent = data.total ? `· ${data.total}` : '';
-
-  const parts = [];
+    const parts = [];
   if (data.total > 0) {
     const echte = data.total - data.automatic;
     parts.push(`<span><b>${echte}</b> echte Antwort${echte === 1 ? '' : 'en'}</span>`);
@@ -836,7 +839,7 @@ async function sendAnswer(id) {
     const result = await api('/api/replies/answer', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ campaign: state.campaign || 'kampagne', id, text }),
+      body: JSON.stringify({ campaign: currentCampaign(), id, text }),
     });
     toast(`Antwort an ${result.to} ist raus.`);
     await loadReplies();
@@ -867,7 +870,7 @@ async function syncReplies() {
     const res = await fetch('/api/replies/sync', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ campaign: state.campaign || 'kampagne' }),
+      body: JSON.stringify({ campaign: currentCampaign() }),
     });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `Fehler ${res.status}`);
 
@@ -956,7 +959,7 @@ async function askAssistant(question) {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        campaign: state.campaign || 'kampagne',
+        campaign: currentCampaign(),
         question,
         history: replyState.history,
       }),
@@ -1017,15 +1020,203 @@ function bindReplies() {
     askAssistant(question);
   });
 
-  // Beim Wechsel auf den Schritt und bei Kampagnenwechsel neu laden.
-  $$('#stepNav button[data-step="4"], [data-goto="4"]').forEach((b) =>
-    b.addEventListener('click', loadReplies),
-  );
-  $('#campaign').addEventListener('change', () => {
-    replyState.history = [];
-    loadReplies();
-  });
 }
 
 bindReplies();
-loadReplies();
+
+// ==========================================================================
+// Bereiche: Assistent für eine neue Kampagne – und die Liste der bisherigen
+// ==========================================================================
+
+function showView(name) {
+  $$('.view').forEach((el) => el.classList.toggle('active', el.dataset.view === name));
+  $$('#viewNav button').forEach((el) => el.classList.toggle('active', el.dataset.view === name));
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (name === 'list') loadCampaigns();
+}
+
+// ------------------------------------------------------------------- Liste
+
+async function loadCampaigns() {
+  let data;
+  try {
+    data = await api('/api/campaigns');
+  } catch (error) {
+    return toast(error.message, 5000);
+  }
+
+  $('#campaignCount').textContent = data.campaigns.length ? `· ${data.campaigns.length}` : '';
+
+  if (data.campaigns.length === 0) {
+    $('#campaignList').innerHTML = `<p class="empty-hint">
+      Noch keine Kampagne versendet. Eine Kampagne wird angelegt, sobald du im Assistenten
+      wirklich sendest – ein Probelauf legt nichts an.</p>`;
+    return;
+  }
+
+  $('#campaignList').innerHTML = data.campaigns
+    .map((c) => {
+      const zahlen = [
+        `<span><b>${c.sent}</b> zugestellt</span>`,
+        c.failed ? `<span style="color:var(--bad)"><b>${c.failed}</b> fehlgeschlagen</span>` : '',
+        c.open ? `<span><b>${c.open}</b> offen</span>` : '',
+        c.replies ? `<span style="color:var(--ok)"><b>${c.replies}</b> Antworten</span>` : '',
+      ]
+        .filter(Boolean)
+        .join('');
+
+      return `<button type="button" class="campaign-card" data-name="${escapeHtml(c.name)}">
+        <span class="campaign-head">
+          <b>${escapeHtml(c.name)}</b>
+          <span class="when">${c.lastActivityAt ? formatDate(c.lastActivityAt) : ''}</span>
+        </span>
+        <span class="campaign-subject">${escapeHtml(c.subject || '(kein Betreff gespeichert)')}</span>
+        <span class="stats">${zahlen}</span>
+        ${c.hasManifest ? '' : '<span class="tag">nur Protokoll – vor dieser Version versendet</span>'}
+      </button>`;
+    })
+    .join('');
+
+  $$('#campaignList .campaign-card').forEach((card) =>
+    card.addEventListener('click', () => openCampaign(card.dataset.name)),
+  );
+}
+
+// ------------------------------------------------------------------ Detail
+
+async function openCampaign(name) {
+  let data;
+  try {
+    data = await api(`/api/campaign?name=${encodeURIComponent(name)}`);
+  } catch (error) {
+    return toast(error.message, 5000);
+  }
+
+  replyState.campaign = name;
+  replyState.history = []; // Chatverlauf gehört zur Kampagne, nicht zur Sitzung
+  replyState.selected = null;
+
+  $('#campaignListPanel').hidden = true;
+  $('#campaignDetailPanel').hidden = false;
+  $('#detailName').textContent = name;
+
+  const summe = [
+    `<span><b>${data.sent}</b> zugestellt</span>`,
+    data.failed ? `<span style="color:var(--bad)"><b>${data.failed}</b> fehlgeschlagen</span>` : '',
+    data.open ? `<span><b>${data.open}</b> offen</span>` : '',
+    data.createdAt ? `<span>angelegt ${formatDate(data.createdAt)}</span>` : '',
+  ].filter(Boolean);
+  $('#detailSummary').innerHTML = summe.join('');
+
+  // Verschickte Mail
+  const manifest = data.manifest;
+  $('#detailFrom').textContent = manifest?.from || '–';
+  $('#detailSubject').textContent = manifest?.subject || '(nicht gespeichert)';
+
+  if (manifest?.isHtml && manifest.body) {
+    $('#detailFrame').hidden = false;
+    $('#detailText').hidden = true;
+    $('#detailFrame').srcdoc = manifest.body;
+  } else {
+    $('#detailFrame').hidden = true;
+    $('#detailText').hidden = false;
+    $('#detailText').textContent =
+      manifest?.body ||
+      'Für diese Kampagne wurde der Mailtext nicht gespeichert – sie stammt aus einer Version vor dieser Funktion.';
+  }
+
+  // Empfänger mit Stand
+  $('#detailRecipients').innerHTML = data.recipients.length
+    ? data.recipients
+        .map((r) => {
+          const zeichen =
+            r.status === 'zugestellt' ? '✓' : r.status === 'fehlgeschlagen' ? '✕' : '·';
+          return `<div class="recipient-row ${r.status}">
+            <span class="mark">${zeichen}</span>
+            <span class="addr">${escapeHtml(r.email)}</span>
+            <span class="state">${r.status}${r.error ? ` – ${escapeHtml(r.error)}` : ''}</span>
+          </div>`;
+        })
+        .join('')
+    : '<p class="empty-hint">Keine Empfänger gespeichert.</p>';
+
+  $('#btnResume').hidden = !manifest;
+  $('#btnResume').dataset.name = name;
+
+  // Antworten und Chat beziehen sich ab jetzt auf diese Kampagne
+  $('#chatLog').querySelectorAll('.bubble').forEach((b) => b.remove());
+  $('#replyDetail').innerHTML = '<p class="empty-hint">Links eine Antwort auswählen, um sie hier zu lesen.</p>';
+  await loadReplies();
+}
+
+/** Lädt eine gespeicherte Kampagne zurück in den Assistenten. */
+async function resumeCampaign(name) {
+  const data = await api(`/api/campaign?name=${encodeURIComponent(name)}`);
+  const manifest = data.manifest;
+  if (!manifest) return toast('Für diese Kampagne ist kein Inhalt gespeichert.');
+
+  state.campaign = name;
+  state.subject = manifest.subject;
+  state.isHtml = manifest.isHtml;
+  state.addresses = manifest.recipients.map((r) => r.email).join('\n');
+
+  $('#campaign').value = name;
+  $('#subject').value = manifest.subject;
+  $('#addresses').value = state.addresses;
+  $('#plainMode').checked = !manifest.isHtml;
+  if (manifest.isHtml) $('#editor').innerHTML = manifest.body;
+  else $('#plainEditor').value = manifest.body;
+  applyMode();
+
+  showView('new');
+  showStep(1);
+  onContentChanged();
+  toast(`"${name}" geladen. Bereits zugestellte Adressen werden übersprungen.`);
+}
+
+// ------------------------------------------------------------------ Bindung
+
+function bindViews() {
+  $$('#viewNav button').forEach((b) => b.addEventListener('click', () => showView(b.dataset.view)));
+
+  $('#btnBackToList').addEventListener('click', () => {
+    $('#campaignDetailPanel').hidden = true;
+    $('#campaignListPanel').hidden = false;
+    replyState.campaign = null;
+    loadCampaigns();
+  });
+
+  $('#btnResume').addEventListener('click', (event) =>
+    resumeCampaign(event.currentTarget.dataset.name).catch((error) => toast(error.message, 5000)),
+  );
+
+  // Ohne eingetippten Namen einen aus dem Betreff vorschlagen – sonst landet
+  // alles in einer Sammelkampagne namens "kampagne".
+  let nameVonHand = false;
+  $('#campaign').addEventListener('input', () => {
+    nameVonHand = $('#campaign').value.trim() !== '';
+  });
+  $('#subject').addEventListener('input', () => {
+    if (nameVonHand || !state.subject) return;
+    // Umlaute umschreiben statt wegwerfen: der Server entschärft den Namen
+    // ohnehin, so bleibt der angezeigte Name derselbe wie der gespeicherte.
+    const vorschlag = state.subject
+      .toLowerCase()
+      .replace(/\{\{[^}]*\}\}/g, '')
+      .replace(/ä/g, 'ae')
+      .replace(/ö/g, 'oe')
+      .replace(/ü/g, 'ue')
+      .replace(/ß/g, 'ss')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40)
+      .replace(/-+$/, '');
+    if (!vorschlag) return;
+    $('#campaign').value = vorschlag;
+    state.campaign = vorschlag;
+    $('#campaignNote').textContent = 'Name aus dem Betreff vorgeschlagen – änderbar.';
+    saveDraft();
+  });
+}
+
+bindViews();

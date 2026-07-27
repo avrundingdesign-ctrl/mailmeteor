@@ -10,6 +10,8 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
+import { safeName } from './campaigns.js';
+
 export class ReplyStore {
   /** @param {string} path Pfad zur .jsonl-Datei */
   constructor(path) {
@@ -99,14 +101,12 @@ export class ReplyStore {
   }
 }
 
-/** Dateiname des Antwortspeichers einer Kampagne. */
+/**
+ * Dateiname des Antwortspeichers einer Kampagne.
+ *
+ * Eigener Unterordner: sonst müsste die Kampagnenliste die Antwortdateien am
+ * Namen erkennen und würde eine Kampagne namens "antworten-x" verschlucken.
+ */
 export function replyStorePath(dir, campaign) {
-  const safe =
-    String(campaign)
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]+/g, '-')
-      .replace(/-{2,}/g, '-')
-      .replace(/^[-_]+|[-_]+$/g, '')
-      .slice(0, 80) || 'kampagne';
-  return `${dir}/antworten-${safe}.jsonl`;
+  return `${dir}/antworten/${safeName(campaign)}.jsonl`;
 }
